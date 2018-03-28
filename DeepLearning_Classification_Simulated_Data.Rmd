@@ -1,0 +1,527 @@
+---
+html_document:
+  keep_md: yes
+author: "Dominic Noy"
+title: "Building a Deep Neural Network Step-by-Step in R"
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This manuscript presents the algorithm of a Deep Neural Network.
+I translated the code (and used some text chunks) from the Deeplearning Specialization of Deeplearning.ai on Coursera. This manuscript should support R users to comprehend the underpinnings of Neural Networks for binary classification problems. 
+It is divided into two parts. Firstly, I present the Auxiliary Functions, which are, secondly, called within a global NN model that is applied to simulated data. 
+
+
+**AUXILIARY Functions**
+
+- Initialize the parameters 
+- Forward propagation module
+  - Linear forward
+  - Linear Activation Forward
+  - Linear Model Forward
+- Cost Function
+- Backward propagation module
+    - Linear Backward
+    - Linear Activation backward
+  - L-Model Backward
+  - Update Parameters
+  
+**Deep Neural Network for Classification on Simulated Data**
+
+ - Simulate Data
+ - L-Layer Neural Network model
+ - Evaluation
+    - Run the Model
+    - Performance Metrics
+    - Prediction
+    
+
+# Building a Deep Neural Network Step by Step in R - AUXILIARY Functions
+- superscipt: [l] : lth layer
+- superscript (i) : ith example
+- lowerscipt i: ith entry in vector
+
+##Initialize the parameters 
+- Linear -> relu -> linear -> sigmoid
+```{r initialize layer}
+initialize_parameters <- function(layer_dims)
+{
+  
+  L <- length(layer_dims)
+  
+  parameters <- vector("list", length=(L-1))
+
+  for(l in 2:(L))
+    {
+    parameters[[l-1]]<-list(matrix(runif(layer_dims[l]*layer_dims[l-1]),
+                                   layer_dims[l], layer_dims[l-1]), 
+                            matrix(runif(layer_dims[l]*1),layer_dims[l], 1))
+    names(parameters[[l-1]])<-c("W", "b")
+    }
+  return(parameters)
+}
+```
+
+##Forward propagation module
+Forward propagation consist of three functions
+- Linear function
+- Linear -> Activation where Activation will be either ReLU or Sigmoid
+- [Linear->ReLu] x (L-1) -> Linear -> Sigmoid (whole module)
+$$Z^{[l]} = W^{[l]}A^{[l-1]}+b^{[l]},$$
+where $A^{[0]} = X$. 
+
+###Linear forward
+```{r linear_forward}
+linear_forward <- function(A, W, b)
+  {
+  
+  # Implement the linear part of a layer's forward propagation.
+  # 
+  #   Arguments:
+  #   A -- activations from previous layer (or input data):
+  #   W -- weights matrix
+  #   b -- bias vector
+  # 
+  #   Returns:
+  #   Z -- the input of the activation function
+  #   cache -- a list containing "A", "W" and "b" 
+    
+  Z <- apply(W%*%A,2, function(x) x+b)
+   
+  linear_cache <- list("A" = A, "W" = W, "b" = b)
+ 
+  return(list("Z" = Z, "linear_cache" = linear_cache))
+}
+```
+
+###Linear Activation Forward
+- Sigmoid: $A = \sigma(Z) = \sigma(WA+b) = \frac{1}{1+e^{-(WA+b)}}$
+- ReLU: $A = RELU(Z) = max(0, Z)$
+
+the followwing linear_activation_forward function does:
+$$A^{[l]} = g(Z^{[l]}) = g(W^{[l]}A^{[l-1]}+b^{[l]})$$
+
+Output is A and cache (linear_cache, activation_cache)
+linear cache is $A^{[l-1]}, W^{[l]}, b^{[l]}$
+activation cache is Z^{[l]}
+```{r sigmoid}
+sigmoid <- function(x)
+  {
+  1/(1+exp(-x))
+  }
+```
+
+```{r ReLU}
+RELU <- function(x)
+  {
+  max(0, x)
+  }
+```
+
+```{r linear_activation_forward}
+linear_activation_forward <- function(A_prev, W, b, activation)
+{
+# Implement the forward propagation for the LINEAR->ACTIVATION layer# 
+#     Arguments
+#     A_prev -- activations from previous layer (or input data)
+#     W -- weights matrix
+#     b -- bias vector
+#     activation -- the activation to be used in this layer 
+#     stored as a text string: "sigmoid" or "relu"
+# 
+#     Returns:
+#     A -- the output of the activation function
+#     cache -- a list containing "linear_cache" and "activation_cache"
+    
+    out <- linear_forward(A_prev, W, b) 
+    
+    Z <- out$Z
+    linear_cache <- out$linear_cache
+    
+    ifelse(activation=="sigmoid", 
+           A <- sapply(Z, function(x) sigmoid(x)),
+           A <- apply(Z, 1:2, function(x) RELU(x)))  
+    
+    cache <- list("linear_cache" = linear_cache, "activation_cache" = Z)
+  
+    return(list("A" = A, "cache" = cache))
+}
+```
+
+###Linear Model Forward
+- linear_activation_forward is repeated with RELU L-1 times
+- at L, linear_activation_forward is used with sigmoid
+Implement: 
+$$A^{[L]} = g(Z^{[L]}) = g(W^{[L]}A^{[L-1]}+b^{[L]})$$
+in a loop.
+```{r L_model_forward}
+L_model_forward <- function(X, parameters)
+{
+
+    # Implement forward propagation for the 
+    #[LINEAR->RELU]*(L-1)->LINEAR->SIGMOID computation
+    # 
+    # Arguments:
+    # X -- data of shape (input size, number of examples)
+    # parameters -- output of initialize_parameters()
+    # 
+    # Returns:
+    # AL -- last post-activation value
+    # caches -- list of caches containing:
+    # every cache of linear_relu_forward() (there are L-1 of them, indexed from 0 to L-2)
+    # the cache of linear_sigmoid_forward() (there is one, indexed L-1)
+    
+  
+  caches <- list()
+  A = X
+  L = length(parameters)
+ 
+#Implementation of Linear -> RELU (L-1 times); add "cache" to the "caches" list
+  
+ for(l in 1:(L-1))
+ {
+    A_prev <- A
+    out <- linear_activation_forward(A_prev, parameters[[l]]$W, parameters[[l]]$b, "relu")
+    A<-out$A
+    cache <- out$cache
+    caches[[l]] <- cache
+ }  
+   
+  A_prev <- A
+  out <- linear_activation_forward(A_prev, parameters[[L]]$W, parameters[[L]]$b, "sigmoid")
+  AL<-matrix(out$A, nrow=n_y)-0.001 
+  cache <- out$cache
+  caches[[L]] <- cache
+  
+  return(list("AL" = AL, "caches" = caches)) 
+  
+}
+```
+
+##Cost Function
+Compute the cost to find out whether the model is learning
+the cost is here they J:
+$$-\frac{1}{m} \sum\limits_{i = 1}^{m} (y^{(i)}\log\left(a^{[L] (i)}\right) + (1-y^{(i)})\log\left(1- a^{[L](i)}\right)) \tag{7}$$
+```{r Cost function}
+compute_cost <- function(AL, Y, m)
+{
+  # Implement the cost function
+  #   Arguments:
+  #   AL -- probability vector corresponding to your label predictions
+  #   Y -- true "label" vector 
+  # 
+  #   Returns:
+  #   cost -- cross-entropy cost
+  
+  m <- length(Y)
+  
+  #Computer loss from AL and y
+  cost <- - (1/m)*sum(Y*log(abs(AL))+(1-Y)*log(abs(1-AL)))
+  return(cost)
+}
+```
+
+##Backward propagation module
+Back propagation is applied in order to obtain the gradient of the loss (cost) function with 
+respect to the parameters
+I built three functions:
+- Linear backward
+- linear -> Activation backward where activation computes the derivative of either the ReLU or sigmoid
+- the entire backward model: linear -> ReLu * L-1 -> Linear -> Sigmoid 
+
+###Linear Backward
+For layer l, the linear part is: $Z^{[l]} = W^{[l]}A^{[l-1]}+b^{[l]}$ folloId by activation
+I have: derivative: $dZ^{[l]}= \frac{\partial \mathcal{L}}{\partial Z^{[l]}}$
+goal: get $dW^{[l]}, db^{[l]}, dA^{[l-1]}$
+by:
+$$
+dW^{[l]} = \frac{\partial \mathcal{L}}{\partial W^{[l]}}=\frac{1}{m}dZ^{[l]}A^{[l-1]T}$$
+$$db^{[l]} = \frac{\partial \mathcal{L}}{\partial b^{[l]}}=\frac{1}{m}\sum_{i=1}^mdZ^{[l](i)}\\$$
+$$dA^{[l-1]}=\frac{\partial \mathcal{L}}{\partial A^{[l-1]}}=W^{[l]T}dZ^{[l]}
+$$
+```{r linear_backward}
+linear_backward <- function(dZ, linear_cache)
+  {
+  # Implement the linear portion of backward 
+  #propagation for a single layer (layer l)
+  # 
+  #   Arguments:
+  #   dZ -- Gradient of the cost with respect to the linear output
+  #   cache -- tuple of values (A_prev, W, b) coming from the forward propagation in the current layer
+  # 
+  #   Returns:
+  #   dA_prev -- Gradient of the cost with respect 
+  #to the activation (of the previous layer l-1)
+  #   dW -- Gradient of the cost with respect to W (current layer l)
+  #   db -- Gradient of the cost with respect to b (current layer l)
+  
+  #linear_cache$A is A_prev compared to the other parameters
+  A_prev <- linear_cache$A
+  W <- linear_cache$W
+  b <- linear_cache$b
+  
+  m <- dim(A_prev)[2]
+  
+  dW <- (dZ%*%t(A_prev))/m
+  db <- as.matrix(rowSums(dZ)/m)
+  
+  dA_prev = t(W)%*%matrix(dZ, nrow=ncol(t(W)))
+  return(list("dA_prev"=dA_prev, "dW"=dW, "db"=db))
+}
+```
+
+###Linear Activation backward
+- sigmoid_backward: backward propagation of SIGMOID
+- relu_backward: relu_backward(dA, activation_cache)
+
+g(.) is activation, g'(.) is backward:
+$$dZ^{[l]} = dA[l]g'(Z^{[l]})$$
+$$\frac{d}{dx}\sigma(x) = \sigma(x)(1-\sigma(x))$$ 
+```{r sigmoid backward}
+sigmoid_backward<-function(x){sigmoid(x)*(1 - sigmoid(x))}
+```
+
+```{r relu_backward}
+RELU_backward<-function(x){ifelse(x > 0, 1, 0)}
+```
+
+```{r linear activation backward}
+linear_activation_backward<-function(dA, cache, activation)
+{
+# Implement the backward propagation for the LINEAR->ACTIVATION layer.
+#     
+#     Arguments:
+#     dA -- post-activation gradient for current layer l 
+#     cache -- tuple of values (linear_cache, activation_cache) I store for
+#     computing backward propagation efficiently
+#     activation -- the activation to be used in this layer,
+#     stored as a text string: "sigmoid" or "relu"
+#     
+#     Returns:
+#     dA_prev -- Gradient of the cost with respect to the activation 
+#     (of the previous layer l-1)
+#     dW -- Gradient of the cost with respect to W (current layer l)
+#     db -- Gradient of the cost with respect to b (current layer l)
+  
+  linear_cache <- cache$linear_cache
+  activation_cache <- cache$activation_cache  
+  ifelse(activation=="relu", 
+         dZ <- dA*RELU_backward(activation_cache), 
+         dZ <- dA*sigmoid_backward(activation_cache))
+
+  output<-linear_backward(dZ, linear_cache)
+  return(output)
+}
+```
+
+##L-Model Backward
+In forward propagation (L_model_forward) stored cache (X, W, b, z)
+Now, L_model_backward uses this cache by iterating through all hidden
+layers backward, starting at layer L. 
+
+1) Initialize backpropagation:
+I have: $$A^{[L]} = \sigma(Z^{[L]})$$
+compute: $$dA^{[L]} = \frac{\partial \mathcal{L}}{\partial A^{[L]}}=-(\frac{Y}{AL}-\frac{1-Y}{1-AL})$$
+2) Fed $dA^{[L]}$ into LINEAR -> SIGMOID (use cache from L_model_forward)
+
+3) loop through LINEAR->RELU_backward
+
+4) store dA, dW, db
+
+
+```{r L-Model Backward}
+L_model_backward<-function(AL, Y, caches)
+{
+    # Implement the backward propagation for the 
+    # [LINEAR->RELU] * (L-1) -> LINEAR -> SIGMOID 
+    #     
+    #     Arguments:
+    #     AL -- probability vector, output of the forward
+    #     propagation (L_model_forward())
+    #     Y -- true "label" vector 
+    #     caches -- list of caches containing:
+    #     every cache of linear_activation_forward() with "relu" 
+    #     (it's caches[l], for l in range(L-1) i.e l = 0...L-2)
+    #     the cache of linear_activation_forward() with "sigmoid" 
+    #     (it's caches[L-1])
+    #     
+    #     Returns:
+    #     grads -- A list with the gradients
+             
+    caches_back<-caches
+    grads <- list()
+    L <- length(caches_back) #number of caches
+    m <- dim(AL)[2]
+    
+    #Initializing the backpropagation
+    dAL <- - ((Y/AL) - ((1-Y)/(1-AL)))
+    
+    #Lth layer (Sigmoid -> Linear) gradients
+    output<-linear_activation_backward(dAL,  
+                                       caches_back[L][[1]],
+                                       activation="sigmoid") 
+    #start with cache at Layer L
+    
+    grads[[L]]<-output
+    
+    ###loop over the relu->linear 
+    for(l in (L-1):1)
+      {
+      grads[[l]]<-linear_activation_backward(
+        grads[[l+1]]$dA_prev,
+        caches_back[l][[1]], activation="relu")
+      }
+    return(grads)    
+}
+```
+
+##Update Parameters
+Updating parameters using gradient descent
+$$W^{[l]} = W^{[L]}-\alpha dW^{[l]}$$
+$$b^{[l]} = b^{[L]}-\alpha db^{[l]}$$
+```{r update parameters}
+update_parameters<-function(parameters, grads, learning_rate)
+{
+  # Update parameters using gradient descent
+  L <- length(parameters)
+  
+  for(l in 1:L)
+  {
+    parameters[[l]]$W <- parameters[[l]]$W - learning_rate*grads[[l]]$dW
+    parameters[[l]]$b <- parameters[[l]]$b - learning_rate*grads[[l]]$db
+  }
+ return(parameters) 
+}
+
+```
+
+#Deep Neural Network for Classification: Application
+##Simulate Data
+```{r simulate data}
+set.seed(123)
+#for illustration purpose, I use two features
+n_features<-2
+#number of observations
+m<-1000
+
+X<-matrix(runif(n_features*m, -1,1), ncol=n_features, nrow=m)
+y<-rep(NA, m)
+
+#create some weired function
+r<-0.5
+#create circle
+d = sqrt(X[,1]^2 + X[,2]^2)+rnorm(m, -0.1,0.1)
+y[d<r]<-1
+y[d>=r]<-0
+#cut part of the circle
+y[X[,1]>0]<-0
+
+
+#visualize first two variables
+plt<-data.frame(cbind(X, y))
+names(plt)<-c("var1", "var2", "fac")
+require(ggplot2)
+ggplot(plt, aes(x=var1, y=var2, col=fac))+
+  geom_point()
+
+#reshape arrays
+X<-t(X)
+y<-matrix(y, nrow=1)
+
+```
+
+##Split into Training and Testset
+```{r training and test set}
+#split into training and test set
+prop_training <- 0.7
+train_index<-sample(c(1:prop_training*m), prop_training*m, replace=FALSE)
+X_train <- X[,train_index]
+X_test <- X[,-train_index]
+y_train<-y[,train_index]
+y_test<-y[,-train_index]
+```
+
+##L-Layer Neural Network model
+used the helper functions to build the L-Layer neural network with the structure:
+[LINEAR -> RELU]*(L-1) -> LINEAR -> SIGMOID
+```{r Model}
+L_layer_model<- function(X, Y, layers_dims, learning_rate,  print_cost=FALSE, num_iteration)
+  {
+
+  cost <- list()
+  
+  #Parameter initialization
+  parameters <- initialize_parameters(layers_dims)
+  
+  #for loop
+  costs<-c()
+  for(i in 1:num_iteration)
+    {
+        #Forward Propagation: [Linear -> Relu]*(L-1) -> Linear -> Sigmoid
+        out <- L_model_forward(X, parameters)
+        AL <- out$AL
+        caches <- out$caches
+        
+        #Compute costs
+        cost <- compute_cost(AL, Y, length(Y))
+        
+        #Backward Propagation
+        grads <- L_model_backward(AL, Y, caches)
+        
+        #Update parameters
+        parameters <- update_parameters(parameters, grads, learning_rate)
+        
+        #cost
+        #print costs
+        if(print_cost==TRUE & i%%100 == 0){print(cost)}
+        costs[i]<-cost
+        
+        if(cost<=0){break}
+    }
+  return(list(costs,parameters))
+}
+```
+
+##Evaluation
+###Run the Model
+```{r Model run}
+#out[[1]] = costs
+#out[[2]] = paramters for prediction
+n_x <- n_features #number of features (of X)
+n_h <- 3 #n of nodes in layer h
+n_y <- 1 #label (cat or no cat)
+layers_dims = c(n_x, n_h, n_h, n_h, n_y)
+
+out <- L_layer_model(X_train, y_train, layers_dims,
+                     num_iteration=1000,print_cost=TRUE,
+                     learning_rate=0.1)
+plot(out[[1]])
+```
+
+#Performance Metrics
+```{r prediction}
+pred <- L_model_forward(X_test, out[[2]])
+
+y_hat<-pred$AL
+y_hat[y_hat<=0.5]<-0
+y_hat[y_hat>0.5]<-1
+#y hat
+
+#accuracy
+list(
+"accuracy"=sum(y_hat==y_test)/length(y_test),
+"precision"=sum(y_hat==1 & y_test==1)/ sum((y_hat==1 & y_test==1)|(y_test==1 & y_hat==0)),
+"recall"=sum(y_hat==1 & y_test==1)/ sum((y_hat==1 & y_test==1)|(y_test==0 & y_hat==1)), 
+"specificity"= 1-sum(y_hat==1 & y_test==0)/sum((y_hat==1 & y_test==0)|(y_hat==0 & y_test==0)))
+```
+
+#Prediction
+```{r plot test data}
+test<-data.frame(cbind(t(X_test), t(y_hat)))
+names(test) <- c("x1", "x2", "y")
+ggplot(test, aes(x=x1, y=x2, col=y))+
+  geom_point()
+```
